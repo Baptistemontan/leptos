@@ -2,9 +2,10 @@
 //! which is used to store immutable references to values.
 //! This is useful for storing, for example, strings.
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::{Borrow, Cow},
+    cell::{Ref, RefCell},
     ffi::{CStr, OsStr},
     fmt,
     hash::Hash,
@@ -522,14 +523,35 @@ impl<'a> FromIterator<Oco<'a, str>> for String {
     }
 }
 
-impl<'a, T> Deserialize<'a> for Oco<'static, T>
+impl<'de: 'a, 'a, T: ?Sized + ToOwned + 'a> Oco<'a, T>
+where
+    &'a T: Deserialize<'de>,
+{
+    ///
+    pub fn deserialize_borrowed<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        <&'a T>::deserialize(deserializer).map(Oco::Borrowed)
+    }
+}
+
+#[test]
+fn test() {
+    let mut de = serde_json::Deserializer::from_str("\"hello\"");
+    let value = Oco::<str>::deserialize_borrowed(&mut de).unwrap();
+    assert!(value.is_borrowed());
+    assert_eq!(value, "hello");
+}
+
+impl<'de: 'a, 'a, T> Deserialize<'de> for Oco<'static, T>
 where
     T: ?Sized + ToOwned + 'a,
-    T::Owned: DeserializeOwned,
+    T::Owned: Deserialize<'de>,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'a>,
+        D: serde::Deserializer<'de>,
     {
         <T::Owned>::deserialize(deserializer).map(Oco::Owned)
     }
@@ -545,6 +567,51 @@ where
         S: serde::Serializer,
     {
         self.as_ref().serialize(serializer)
+    }
+}
+
+/// A wrapper around [`Oco`] that allow to use [`Oco::clone_amortized`] through a shared reference
+pub struct AmortizedOco<'a, T: ?Sized + ToOwned + 'a>(RefCell<Oco<'a, T>>);
+
+impl<'a, T: ?Sized + ToOwned + 'a> AmortizedOco<'a, T> {
+    /// Return a [`Ref<'_, T>`] to the underlying data
+    pub fn borrow(&self) -> Ref<'_, T> {
+        Ref::map(self.0.borrow(), Deref::deref)
+    }
+    /// Consume `Self` and return the wrapped [`Oco`]
+    pub fn into_inner(self) -> Oco<'a, T> {
+        self.0.into_inner()
+    }
+}
+
+impl<'a, T: ?Sized + ToOwned + 'a> AmortizedOco<'a, T>
+where
+    for<'b> Rc<T>: From<&'b <T as ToOwned>::Owned>,
+{
+    /// Calls [`Oco::clone_amortized`] on the wrapped [`Oco`] and return the cloned [`Oco`]
+    pub fn clone_amortized(&self) -> Oco<'a, T> {
+        self.0.borrow_mut().clone_amortized()
+    }
+}
+
+// `impl From<AmortizedOco> for Oco` is impossible due to this impl
+// because `T: Into<T>`
+// use `AmortizedOco::into_inner`
+impl<'a, U, T: ?Sized + ToOwned + 'a> From<U> for AmortizedOco<'a, T>
+where
+    Oco<'a, T>: From<U>,
+{
+    fn from(value: U) -> Self {
+        AmortizedOco(RefCell::new(value.into()))
+    }
+}
+
+impl<'a, T: ?Sized + ToOwned + 'a> Clone for AmortizedOco<'a, T>
+where
+    for<'b> Rc<T>: From<&'b <T as ToOwned>::Owned>,
+{
+    fn clone(&self) -> Self {
+        self.clone_amortized().into()
     }
 }
 
@@ -654,5 +721,13 @@ mod tests {
         let s: Oco<str> = serde_json::from_str("\"bar\"")
             .expect("should deserialize from string");
         assert_eq!(s, Oco::from(String::from("bar")));
+    }
+
+    #[test]
+    fn deserialization_borrowed_works() {
+        let mut deserializer = serde_json::from_str("\"bar\"");
+        let s: Oco<str> = Oco::deserialize_borrowed(&mut deserializer)
+            .expect("should deserialize from borrowed string");
+        assert_eq!(s, "bar");
     }
 }
