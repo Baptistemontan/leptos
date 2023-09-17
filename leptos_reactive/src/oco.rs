@@ -252,9 +252,7 @@ where
     /// # Examples
     /// ```
     /// # use leptos_reactive::oco::Oco;
-    /// use std::path::Path;
-    ///
-    /// let oco = Oco::<str>::Owned(Path::new("Hello").to_owned());
+    /// let oco = Oco::<str>::Owned("Hello".to_string());
     /// let oco2 = oco.clone();
     /// assert_eq!(oco, oco2);
     /// assert!(oco2.is_counted());
