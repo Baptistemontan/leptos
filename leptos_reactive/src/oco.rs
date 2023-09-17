@@ -725,7 +725,7 @@ mod tests {
 
     #[test]
     fn deserialization_borrowed_works() {
-        let mut deserializer = serde_json::from_str("\"bar\"");
+        let mut deserializer = serde_json::Deserializer::from_str("\"bar\"");
         let s: Oco<str> = Oco::deserialize_borrowed(&mut deserializer)
             .expect("should deserialize from borrowed string");
         assert_eq!(s, "bar");
