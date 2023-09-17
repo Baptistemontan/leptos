@@ -214,7 +214,7 @@ where
 
 impl<'a, T: ?Sized + ToOwned + 'a> Oco<'a, T>
 where
-    for<'b> Rc<T>: From<&'b <T as ToOwned>::Owned>,
+    for<'b> Rc<T>: From<&'b T>,
 {
     /// Returns a new [`Oco`] with the same value as this one.
     /// Difference with [`Clone::clone`] is that if `self` is [`Oco::Owned`]
@@ -234,7 +234,7 @@ where
             Oco::Borrowed(v) => Oco::Borrowed(v),
             Oco::Counted(v) => Oco::Counted(Rc::clone(v)),
             Oco::Owned(v) => {
-                let counted = Rc::from(v);
+                let counted = Rc::from(Borrow::borrow(v));
                 *self = Oco::Counted(Rc::clone(&counted));
                 Oco::Counted(counted)
             }
@@ -244,7 +244,7 @@ where
 
 impl<'a, T: ?Sized + ToOwned + 'a> Clone for Oco<'a, T>
 where
-    for<'b> Rc<T>: From<&'b <T as ToOwned>::Owned>,
+    for<'b> Rc<T>: From<&'b T>,
 {
     /// Returns a new [`Oco`] with the same value as this one.
     /// If the value is [`Oco::Owned`], this will convert it into
@@ -263,7 +263,7 @@ where
         match self {
             Oco::Borrowed(v) => Oco::Borrowed(v),
             Oco::Counted(v) => Oco::Counted(v.clone()),
-            Oco::Owned(v) => Oco::Counted(Rc::from(v)),
+            Oco::Owned(v) => Oco::Counted(Rc::from(Borrow::borrow(v))),
         }
     }
 }
@@ -586,7 +586,7 @@ impl<'a, T: ?Sized + ToOwned + 'a> AmortizedOco<'a, T> {
 
 impl<'a, T: ?Sized + ToOwned + 'a> AmortizedOco<'a, T>
 where
-    for<'b> Rc<T>: From<&'b <T as ToOwned>::Owned>,
+    for<'b> Rc<T>: From<&'b T>,
 {
     /// Calls [`Oco::clone_amortized`] on the wrapped [`Oco`] and return the cloned [`Oco`]
     pub fn clone_amortized(&self) -> Oco<'a, T> {
@@ -608,7 +608,7 @@ where
 
 impl<'a, T: ?Sized + ToOwned + 'a> Clone for AmortizedOco<'a, T>
 where
-    for<'b> Rc<T>: From<&'b <T as ToOwned>::Owned>,
+    for<'b> Rc<T>: From<&'b T>,
 {
     fn clone(&self) -> Self {
         self.clone_amortized().into()
