@@ -139,6 +139,31 @@ impl Oco<'_, str> {
     pub fn as_str(&self) -> &str {
         self
     }
+
+    /// Returns a new [`Oco`] with the same value as this one.
+    /// Difference with [`Clone::clone`] is that if `self` is [`Oco::Owned`]
+    /// it will return a [`Oco::Counted`] and modify `self` to be also counted
+    /// making next clones O(1)
+    /// # Examples
+    /// ```
+    /// # use leptos_reactive::oco::Oco;
+    /// let mut oco = Oco::<str>::Owned("Hello".to_string());
+    /// let oco2 = oco.clone_amortized();
+    /// assert_eq!(oco, oco2);
+    /// assert!(oco.is_counted());
+    /// assert!(oco2.is_counted());
+    /// ```
+    pub fn clone_amortized(&mut self) -> Self {
+        match self {
+            Oco::Borrowed(v) => Oco::Borrowed(v),
+            Oco::Counted(v) => Oco::Counted(Rc::clone(v)),
+            Oco::Owned(v) => {
+                let counted = Rc::<str>::from(v.as_str());
+                *self = Oco::Counted(Rc::clone(&counted));
+                Oco::Counted(counted)
+            }
+        }
+    }
 }
 
 impl Oco<'_, CStr> {
@@ -157,6 +182,35 @@ impl Oco<'_, CStr> {
     pub fn as_c_str(&self) -> &CStr {
         self
     }
+
+    /// Returns a new [`Oco`] with the same value as this one.
+    /// Difference with [`Clone::clone`] is that if `self` is [`Oco::Owned`]
+    /// it will return a [`Oco::Counted`] and modify `self` to be also counted
+    /// making next clones O(1)
+    /// # Examples
+    /// ```
+    /// # use leptos_reactive::oco::Oco;
+    /// use std::ffi::CStr;
+    ///
+    /// let oco = Oco::<CStr>::Owned(
+    ///     CStr::from_bytes_with_nul(b"Hello\0").unwrap().to_owned(),
+    /// );
+    /// let mut oco2 = oco.clone_amortized();
+    /// assert_eq!(oco, oco2);
+    /// assert!(oco.is_counted());
+    /// assert!(oco2.is_counted());
+    /// ```
+    pub fn clone_amortized(&mut self) -> Self {
+        match self {
+            Oco::Borrowed(v) => Oco::Borrowed(v),
+            Oco::Counted(v) => Oco::Counted(Rc::clone(v)),
+            Oco::Owned(v) => {
+                let counted = Rc::<CStr>::from(v.as_c_str());
+                *self = Oco::Counted(Rc::clone(&counted));
+                Oco::Counted(counted)
+            }
+        }
+    }
 }
 
 impl Oco<'_, OsStr> {
@@ -173,6 +227,33 @@ impl Oco<'_, OsStr> {
     #[inline(always)]
     pub fn as_os_str(&self) -> &OsStr {
         self
+    }
+
+    /// Returns a new [`Oco`] with the same value as this one.
+    /// Difference with [`Clone::clone`] is that if `self` is [`Oco::Owned`]
+    /// it will return a [`Oco::Counted`] and modify `self` to be also counted
+    /// making next clones O(1)
+    /// # Examples
+    /// ```
+    /// # use leptos_reactive::oco::Oco;
+    /// use std::ffi::OsStr;
+    ///
+    /// let mut oco = Oco::<OsStr>::Owned(OsStr::new("Hello").to_owned());
+    /// let oco2 = oco.clone_amortized();
+    /// assert_eq!(oco, oco2);
+    /// assert!(oco.is_counted());
+    /// assert!(oco2.is_counted());
+    /// ```
+    pub fn clone_amortized(&mut self) -> Self {
+        match self {
+            Oco::Borrowed(v) => Oco::Borrowed(v),
+            Oco::Counted(v) => Oco::Counted(Rc::clone(v)),
+            Oco::Owned(v) => {
+                let counted = Rc::<OsStr>::from(v.as_os_str());
+                *self = Oco::Counted(Rc::clone(&counted));
+                Oco::Counted(counted)
+            }
+        }
     }
 }
 
@@ -191,6 +272,33 @@ impl Oco<'_, Path> {
     pub fn as_path(&self) -> &Path {
         self
     }
+
+    /// Returns a new [`Oco`] with the same value as this one.
+    /// Difference with [`Clone::clone`] is that if `self` is [`Oco::Owned`]
+    /// it will return a [`Oco::Counted`] and modify `self` to be also counted
+    /// making next clones O(1)
+    /// # Examples
+    /// ```
+    /// # use leptos_reactive::oco::Oco;
+    /// use std::path::Path;
+    ///
+    /// let mut oco = Oco::<Path>::Owned(Path::new("Hello").to_owned());
+    /// let oco2 = oco.clone_amortized();
+    /// assert_eq!(oco, oco2);
+    /// assert!(oco.is_counted());
+    /// assert!(oco2.is_counted());
+    /// ```
+    pub fn clone_amortized(&mut self) -> Self {
+        match self {
+            Oco::Borrowed(v) => Oco::Borrowed(v),
+            Oco::Counted(v) => Oco::Counted(Rc::clone(v)),
+            Oco::Owned(v) => {
+                let counted = Rc::<Path>::from(v.as_path());
+                *self = Oco::Counted(Rc::clone(&counted));
+                Oco::Counted(counted)
+            }
+        }
+    }
 }
 
 impl<T> Oco<'_, [T]>
@@ -208,6 +316,36 @@ where
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         self
+    }
+}
+
+impl<T: Clone> Oco<'_, [T]>
+where
+    [T]: ToOwned<Owned = Vec<T>>,
+{
+    /// Returns a new [`Oco`] with the same value as this one.
+    /// Difference with [`Clone::clone`] is that if `self` is [`Oco::Owned`]
+    /// it will return a [`Oco::Counted`] and modify `self` to be also counted
+    /// making next clones O(1)
+    /// # Examples
+    /// ```
+    /// # use leptos_reactive::oco::Oco;
+    /// let mut oco = Oco::<[i32]>::Owned(vec![1, 2, 3]);
+    /// let oco2 = oco.clone_amortized();
+    /// assert_eq!(oco, oco2);
+    /// assert!(oco.is_counted());
+    /// assert!(oco2.is_counted());
+    /// ```
+    pub fn clone_amortized(&mut self) -> Self {
+        match self {
+            Oco::Borrowed(v) => Oco::Borrowed(v),
+            Oco::Counted(v) => Oco::Counted(Rc::clone(v)),
+            Oco::Owned(v) => {
+                let counted = Rc::<[T]>::from(v.as_slice());
+                *self = Oco::Counted(Rc::clone(&counted));
+                Oco::Counted(counted)
+            }
+        }
     }
 }
 
