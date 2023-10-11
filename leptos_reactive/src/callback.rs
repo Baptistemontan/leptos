@@ -49,6 +49,11 @@ pub trait Callable<In: 'static, Out: 'static = ()> {
     fn call(&self, input: In) -> Out;
 }
 
+#[cfg(feature = "nightly")]
+type StoredCallBack<In, Out> = StoredValue<dyn Fn(In) -> Out>;
+#[cfg(not(feature = "nightly"))]
+type StoredCallBack<In, Out> = StoredValue<Box<dyn Fn(In) -> Out>>;
+
 /// Callbacks define a standard way to store functions and closures.
 ///
 /// # Example
@@ -72,10 +77,7 @@ pub trait Callable<In: 'static, Out: 'static = ()> {
 ///     }
 /// }
 /// ```
-
-pub struct Callback<In: 'static, Out: 'static = ()>(
-    StoredValue<Box<dyn Fn(In) -> Out>>,
-);
+pub struct Callback<In: 'static, Out: 'static = ()>(StoredCallBack<In, Out>);
 
 impl<In> fmt::Debug for Callback<In> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
@@ -97,7 +99,9 @@ impl<In, Out> Callback<In, Out> {
     where
         F: Fn(In) -> Out + 'static,
     {
-        Self(store_value(Box::new(f)))
+        #[cfg(not(feature = "nightly"))]
+        let f = Box::new(f);
+        Self(store_value(f))
     }
 }
 
