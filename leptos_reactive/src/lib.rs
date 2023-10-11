@@ -5,9 +5,9 @@
 #![cfg_attr(feature = "nightly", feature(type_name_of_val))]
 #![cfg_attr(feature = "nightly", feature(auto_traits))]
 #![cfg_attr(feature = "nightly", feature(negative_impls))]
-#![feature(ptr_metadata)]
-#![feature(coerce_unsized)]
-#![feature(unsize)]
+#![cfg_attr(feature = "nightly", feature(ptr_metadata))]
+#![cfg_attr(feature = "nightly", feature(coerce_unsized))]
+#![cfg_attr(feature = "nightly", feature(unsize))]
 
 //! The reactive system for the [Leptos](https://docs.rs/leptos/latest/leptos/) Web framework.
 //!
