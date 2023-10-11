@@ -3,7 +3,9 @@ use std::{
     cell::RefCell,
     fmt,
     hash::{Hash, Hasher},
-    marker::PhantomData,
+    marker::Unsize,
+    ops::CoerceUnsized,
+    ptr::NonNull,
     rc::Rc,
 };
 
@@ -21,12 +23,17 @@ slotmap::new_key_type! {
 /// and [`RwSignal`](crate::RwSignal)), it is `Copy` and `'static`. Unlike the signal
 /// types, it is not reactive; accessing it does not cause effects to subscribe, and
 /// updating it does not notify anything else.
-pub struct StoredValue<T>
+pub struct StoredValue<T: ?Sized>
 where
     T: 'static,
 {
     id: StoredValueId,
-    ty: PhantomData<T>,
+    inner: NonNull<RefCell<T>>,
+}
+
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<StoredValue<U>>
+    for StoredValue<T>
+{
 }
 
 impl<T: Default> Default for StoredValue<T> {
@@ -35,39 +42,39 @@ impl<T: Default> Default for StoredValue<T> {
     }
 }
 
-impl<T> Clone for StoredValue<T> {
+impl<T: ?Sized> Clone for StoredValue<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T> Copy for StoredValue<T> {}
+impl<T: ?Sized> Copy for StoredValue<T> {}
 
-impl<T> fmt::Debug for StoredValue<T> {
+impl<T: ?Sized> fmt::Debug for StoredValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StoredValue")
             .field("id", &self.id)
-            .field("ty", &self.ty)
+            .field("inner", &self.inner)
             .finish()
     }
 }
 
-impl<T> Eq for StoredValue<T> {}
+impl<T: ?Sized> Eq for StoredValue<T> {}
 
-impl<T> PartialEq for StoredValue<T> {
+impl<T: ?Sized> PartialEq for StoredValue<T> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl<T> Hash for StoredValue<T> {
+impl<T: ?Sized> Hash for StoredValue<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         Runtime::current().hash(state);
         self.id.hash(state);
     }
 }
 
-impl<T> StoredValue<T> {
+impl<T: ?Sized> StoredValue<T> {
     /// Returns a clone of the current stored value.
     ///
     /// # Panics
@@ -107,6 +114,45 @@ impl<T> StoredValue<T> {
         self.try_with_value(T::clone)
     }
 
+    /// Returns a clone of the current stored value.
+    ///
+    /// # Panics
+    /// Panics if you try to access a value owned by a reactive node that has been disposed.
+    ///
+    /// # Examples
+    /// ```
+    /// # use leptos_reactive::*;
+    /// # let runtime = create_runtime();
+    ///
+    /// #[derive(Clone)]
+    /// pub struct MyCloneableData {
+    ///     pub value: String,
+    /// }
+    /// let data = store_value(MyCloneableData { value: "a".into() });
+    ///
+    /// // calling .get_value() clones and returns the value
+    /// assert_eq!(data.get_value().value, "a");
+    /// // can be `data().value` on nightly
+    /// // assert_eq!(data().value, "a");
+    /// # runtime.dispose();
+    /// ```
+    #[track_caller]
+    pub fn get_owned(&self) -> <T as ToOwned>::Owned
+    where
+        T: ToOwned,
+    {
+        self.try_get_owned().expect("could not get stored value")
+    }
+
+    /// Same as [`StoredValue::get_value`] but will not panic by default.
+    #[track_caller]
+    pub fn try_get_owned(&self) -> Option<<T as ToOwned>::Owned>
+    where
+        T: ToOwned,
+    {
+        self.try_with_value(T::to_owned)
+    }
+
     /// Applies a function to the current stored value and returns the result.
     ///
     /// # Panics
@@ -136,17 +182,9 @@ impl<T> StoredValue<T> {
     /// Same as [`StoredValue::with_value`] but returns [`Some(O)]` only if
     /// the stored value has not yet been disposed. [`None`] otherwise.
     pub fn try_with_value<O>(&self, f: impl FnOnce(&T) -> O) -> Option<O> {
-        with_runtime(|runtime| {
-            let value = {
-                let values = runtime.stored_values.borrow();
-                values.get(self.id)?.clone()
-            };
-            let value = value.borrow();
-            let value = value.downcast_ref::<T>()?;
-            Some(f(value))
-        })
-        .ok()
-        .flatten()
+        let value_ref = self.get_inner()?;
+        let value = value_ref.borrow();
+        Some(f(&value))
     }
 
     /// Updates the stored value.
@@ -196,17 +234,9 @@ impl<T> StoredValue<T> {
     /// Same as [`Self::update_value`], but returns [`Some(O)`] if the
     /// stored value has not yet been disposed, [`None`] otherwise.
     pub fn try_update_value<O>(self, f: impl FnOnce(&mut T) -> O) -> Option<O> {
-        with_runtime(|runtime| {
-            let value = {
-                let values = runtime.stored_values.borrow();
-                values.get(self.id)?.clone()
-            };
-            let mut value = value.borrow_mut();
-            let value = value.downcast_mut::<T>()?;
-            Some(f(value))
-        })
-        .ok()
-        .flatten()
+        let value_ref = self.get_inner()?;
+        let mut value = value_ref.borrow_mut();
+        Some(f(&mut value))
     }
 
     /// Disposes of the stored value
@@ -232,13 +262,19 @@ impl<T> StoredValue<T> {
     /// # runtime.dispose();
     /// ```
     #[track_caller]
-    pub fn set_value(&self, value: T) {
+    pub fn set_value(&self, value: T)
+    where
+        T: Sized,
+    {
         self.try_set_value(value);
     }
 
     /// Same as [`Self::set_value`], but returns [`None`] if the
     /// stored value has not yet been disposed, [`Some(T)`] otherwise.
-    pub fn try_set_value(&self, value: T) -> Option<T> {
+    pub fn try_set_value(&self, value: T) -> Option<T>
+    where
+        T: Sized,
+    {
         with_runtime(|runtime| {
             let n = {
                 let values = runtime.stored_values.borrow();
@@ -257,6 +293,51 @@ impl<T> StoredValue<T> {
             } else {
                 Some(value)
             }
+        })
+        .ok()
+        .flatten()
+    }
+
+    /// Cast a [`StoredValue<T>`] to a [`StoredValue<U>`] if the inner value is of type `U`.
+    pub fn downcast<U>(self) -> Option<StoredValue<U>> {
+        with_runtime(|runtime| {
+            let value = {
+                let values = runtime.stored_values.borrow();
+                values.get(self.id)?.clone()
+            };
+
+            if !value.borrow().is::<U>() {
+                return None;
+            }
+
+            // UNSAFE
+            // The cast don't need a surrounding `unsafe` block, but such operation could make `StoredValue<i32> be turned to a `StoredValue<String>` if not carefull
+            // SAFETY:
+            // The type of the inner value is check above, the ptr is valid as it comes from the runtime stored values map.
+            let inner = NonNull::from(&*value).cast::<RefCell<U>>();
+            Some(StoredValue { id: self.id, inner })
+        })
+        .ok()
+        .flatten()
+    }
+
+    fn get_inner(&self) -> Option<&RefCell<T>> {
+        with_runtime(|runtime| {
+            let value = {
+                let values = runtime.stored_values.borrow();
+                NonNull::from(&**values.get(self.id)?)
+            };
+
+            let value_ptr = value.as_ptr() as *const ();
+            let inner_ptr = self.inner.as_ptr() as *const ();
+            // The lazy evaluation is to avoid creating the ref if the backed data don't exist, as it is UB to create invalid ref.
+            // SAFETY:
+            // The NodeId point to an existing data
+            // And that data as the same ptr
+            // So the inner ptr must be valid
+            #[allow(clippy::unnecessary_lazy_evaluations)]
+            (std::ptr::eq(value_ptr, inner_ptr))
+                .then(|| unsafe { self.inner.as_ref() })
         })
         .ok()
         .flatten()
@@ -306,19 +387,15 @@ pub fn store_value<T>(value: T) -> StoredValue<T>
 where
     T: 'static,
 {
-    let id = with_runtime(|runtime| {
-        let id = runtime
-            .stored_values
-            .borrow_mut()
-            .insert(Rc::new(RefCell::new(value)));
+    let (id, inner) = with_runtime(|runtime| {
+        let wrapped_value = Rc::new(RefCell::new(value));
+        let inner = NonNull::from(&*wrapped_value);
+        let id = runtime.stored_values.borrow_mut().insert(wrapped_value);
         runtime.push_scope_property(ScopeProperty::StoredValue(id));
-        id
+        (id, inner)
     })
     .expect("store_value failed to find the current runtime");
-    StoredValue {
-        id,
-        ty: PhantomData,
-    }
+    StoredValue { id, inner }
 }
 
 impl<T> StoredValue<T> {
@@ -368,3 +445,14 @@ impl<T> StoredValue<T> {
 }
 
 impl_get_fn_traits!(StoredValue(get_value));
+
+fn test() {
+    let v: StoredValue<[i32]> = store_value([1, 2, 3]);
+    let _owned_v = v.get_owned();
+    v.with_value(|arr| {
+        println!("{:?}", arr);
+    });
+
+    let f: StoredValue<dyn Fn() -> i32> = store_value(|| 3);
+    let _: i32 = f.with_value(|func| func());
+}
