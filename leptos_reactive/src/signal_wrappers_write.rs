@@ -146,10 +146,10 @@ where
         instrument(level = "trace", skip_all)
     )]
     pub fn map(mapped_setter: impl Fn(T) + 'static) -> Self {
+        #[cfg(not(feature = "nightly"))]
+        let mapped_setter = Box::new(mapped_setter);
         Self {
-            inner: SignalSetterTypes::Mapped(store_value(Box::new(
-                mapped_setter,
-            ))),
+            inner: SignalSetterTypes::Mapped(store_value(mapped_setter)),
             #[cfg(any(debug_assertions, feature = "ssr"))]
             defined_at: std::panic::Location::caller(),
         }
@@ -216,13 +216,17 @@ impl<T> From<RwSignal<T>> for SignalSetter<T> {
         }
     }
 }
+#[cfg(feature = "nightly")]
+type StoredMappedSignalSetter<T> = StoredValue<dyn Fn(T)>;
+#[cfg(not(feature = "nightly"))]
+type StoredMappedSignalSetter<T> = StoredValue<Box<dyn Fn(T)>>;
 
 enum SignalSetterTypes<T>
 where
     T: 'static,
 {
     Write(WriteSignal<T>),
-    Mapped(StoredValue<Box<dyn Fn(T)>>),
+    Mapped(StoredMappedSignalSetter<T>),
     Default,
 }
 
