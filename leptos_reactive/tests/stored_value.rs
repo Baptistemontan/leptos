@@ -1,5 +1,4 @@
 use leptos_reactive::*;
-use std::fmt::Display;
 
 #[test]
 fn basic_stored_value() {
@@ -95,7 +94,8 @@ fn downcast_unsized_stored_value_to_wrong_size() {
 fn downcast_dyn_stored_value() {
     let runtime = create_runtime();
 
-    let sv: StoredValue<dyn Display> = store_value(String::from("test"));
+    let sv: StoredValue<dyn std::fmt::Display> =
+        store_value(String::from("test"));
 
     let v = sv.with_value(|s| format!("this is a {}", s));
 
@@ -116,7 +116,8 @@ fn downcast_dyn_stored_value() {
 fn downcast_dyn_stored_value_to_wrong_type() {
     let runtime = create_runtime();
 
-    let sv: StoredValue<dyn Debug> = store_value(String::from("test"));
+    let sv: StoredValue<dyn std::fmt::Debug> =
+        store_value(String::from("test"));
 
     let casted_sv = sv.downcast::<Vec<u8>>().expect("downcasted to wrong type");
 
