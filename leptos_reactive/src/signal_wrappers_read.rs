@@ -388,10 +388,11 @@ where
             derived_signal()
         };
 
+        #[cfg(not(feature = "nightly"))]
+        let derived_signal = Box::new(derived_signal);
+
         Self {
-            inner: SignalTypes::DerivedSignal(store_value(Box::new(
-                derived_signal,
-            ))),
+            inner: SignalTypes::DerivedSignal(store_value(derived_signal)),
             #[cfg(any(debug_assertions, feature = "ssr"))]
             defined_at: std::panic::Location::caller(),
         }
@@ -440,13 +441,18 @@ impl<T> From<Memo<T>> for Signal<T> {
     }
 }
 
+#[cfg(feature = "nightly")]
+type StoredDerivedSignal<T> = StoredValue<dyn Fn() -> T>;
+#[cfg(not(feature = "nightly"))]
+type StoredDerivedSignal<T> = StoredValue<Box<dyn Fn() -> T>>;
+
 enum SignalTypes<T>
 where
     T: 'static,
 {
     ReadSignal(ReadSignal<T>),
     Memo(Memo<T>),
-    DerivedSignal(StoredValue<Box<dyn Fn() -> T>>),
+    DerivedSignal(StoredDerivedSignal<T>),
 }
 
 impl<T> Clone for SignalTypes<T> {
