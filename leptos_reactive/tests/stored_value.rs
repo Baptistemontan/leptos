@@ -13,6 +13,7 @@ fn basic_stored_value() {
     runtime.dispose();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 fn dyn_stored_value() {
     let runtime = create_runtime();
@@ -30,6 +31,7 @@ fn dyn_stored_value() {
     runtime.dispose();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 fn unsized_stored_value() {
     let runtime = create_runtime();
@@ -43,9 +45,10 @@ fn unsized_stored_value() {
     runtime.dispose();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 #[should_panic(expected = "could not get stored value")]
-fn disposed_stored_value() {
+fn disposed_unsized_stored_value() {
     let runtime = create_runtime();
 
     let sv: StoredValue<[i32]> = store_value([1, 2, 3, 4]);
@@ -55,6 +58,7 @@ fn disposed_stored_value() {
     let _ = sv.to_owned();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 fn downcast_unsized_stored_value() {
     let runtime = create_runtime();
@@ -69,6 +73,7 @@ fn downcast_unsized_stored_value() {
     runtime.dispose();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 #[should_panic(expected = "downcasted to wrong type")]
 fn downcast_unsized_stored_value_to_wrong_size() {
@@ -85,6 +90,7 @@ fn downcast_unsized_stored_value_to_wrong_size() {
     runtime.dispose();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 fn downcast_dyn_stored_value() {
     let runtime = create_runtime();
@@ -104,6 +110,7 @@ fn downcast_dyn_stored_value() {
     runtime.dispose();
 }
 
+#[cfg(feature = "nightly")]
 #[test]
 #[should_panic(expected = "downcasted to wrong type")]
 fn downcast_dyn_stored_value_to_wrong_type() {
