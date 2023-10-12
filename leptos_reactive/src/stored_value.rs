@@ -145,6 +145,7 @@ impl<
     /// # runtime.dispose();
     /// ```
     #[track_caller]
+    #[cfg(feature = "nightly")]
     pub fn get_owned(&self) -> <T as ToOwned>::Owned
     where
         T: ToOwned,
@@ -154,6 +155,7 @@ impl<
 
     /// Same as [`StoredValue::get_owned`] but will not panic by default.
     #[track_caller]
+    #[cfg(feature = "nightly")]
     pub fn try_get_owned(&self) -> Option<<T as ToOwned>::Owned>
     where
         T: ToOwned,
