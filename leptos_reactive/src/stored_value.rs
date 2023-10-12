@@ -1,14 +1,14 @@
 use crate::{with_runtime, Runtime, ScopeProperty};
-#[cfg(not(feature = "nightly"))]
-use std::marker::PhantomData;
-#[cfg(feature = "nightly")]
-use std::{any::TypeId, marker::Unsize, ops::CoerceUnsized, ptr::NonNull};
 use std::{
+    any::TypeId,
     cell::RefCell,
     fmt,
     hash::{Hash, Hasher},
+    ptr::NonNull,
     rc::Rc,
 };
+#[cfg(feature = "nightly")]
+use std::{marker::Unsize, ops::CoerceUnsized};
 
 slotmap::new_key_type! {
     /// Unique ID assigned to a [`StoredValue`].
@@ -29,12 +29,8 @@ where
     T: 'static,
 {
     id: StoredValueId,
-    #[cfg(feature = "nightly")]
     ty: TypeId,
-    #[cfg(feature = "nightly")]
     inner: NonNull<RefCell<T>>,
-    #[cfg(not(feature = "nightly"))]
-    ty: PhantomData<T>,
 }
 
 #[cfg(feature = "nightly")]
@@ -59,10 +55,11 @@ impl<T: ?Sized> Copy for StoredValue<T> {}
 
 impl<T: ?Sized> fmt::Debug for StoredValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut ds = f.debug_struct("StoredValue");
-        #[cfg(feature = "nightly")]
-        ds.field("inner", &self.inner);
-        ds.field("id", &self.id).field("ty", &self.ty).finish()
+        f.debug_struct("StoredValue")
+            .field("inner", &self.inner)
+            .field("id", &self.id)
+            .field("ty", &self.ty)
+            .finish()
     }
 }
 
@@ -81,11 +78,7 @@ impl<T: ?Sized> Hash for StoredValue<T> {
     }
 }
 
-impl<
-        #[cfg(feature = "nightly")] T: ?Sized,
-        #[cfg(not(feature = "nightly"))] T,
-    > StoredValue<T>
-{
+impl<T: ?Sized> StoredValue<T> {
     /// Returns a clone of the current stored value.
     ///
     /// # Panics
@@ -126,6 +119,7 @@ impl<
     }
 
     /// Returns a Owned version of the current stored value.
+    /// This function is usefull if `T` is not sized, like a slice.
     ///
     /// # Panics
     /// Panics if you try to access a value owned by a reactive node that has been disposed.
@@ -140,12 +134,12 @@ impl<
     /// // calling `.get_owned` return an owned version of the value
     /// let owned_data: Vec<i32> = data.get_owned();
     ///
-    /// // calling .get_value() clones and returns the value
     /// assert_eq!(owned_data, [1, 2, 3]);
     /// # runtime.dispose();
     /// ```
     #[track_caller]
     #[cfg(feature = "nightly")]
+    // nightly only, for the doctests. And without nightly impossible to get T: !Sized so ToOwned as no point
     pub fn get_owned(&self) -> <T as ToOwned>::Owned
     where
         T: ToOwned,
@@ -194,10 +188,7 @@ impl<
     pub fn try_with_value<O>(&self, f: impl FnOnce(&T) -> O) -> Option<O> {
         let value_ref = self.get_inner()?;
         let value = value_ref.borrow();
-        #[cfg(feature = "nightly")]
         let r = &*value;
-        #[cfg(not(feature = "nightly"))]
-        let r = value.downcast_ref::<T>()?;
         Some(f(r))
     }
 
@@ -250,32 +241,9 @@ impl<
     pub fn try_update_value<O>(self, f: impl FnOnce(&mut T) -> O) -> Option<O> {
         let value_ref = self.get_inner()?;
         let mut value = value_ref.borrow_mut();
-        #[cfg(feature = "nightly")]
         let mut_ref = &mut *value;
-        #[cfg(not(feature = "nightly"))]
-        let mut_ref = value.downcast_mut::<T>()?;
         Some(f(mut_ref))
     }
-
-    // /// Same as [`Self::update_value`], but returns [`Some(O)`] if the
-    // /// stored value has not yet been disposed, [`None`] otherwise.
-    // #[cfg(not(feature = "nightly"))]
-    // pub fn try_update_value<O>(self, f: impl FnOnce(&mut T) -> O) -> Option<O>
-    // where
-    //     T: Sized,
-    // {
-    //     with_runtime(|runtime| {
-    //         let value = {
-    //             let values = runtime.stored_values.borrow();
-    //             values.get(self.id)?.clone()
-    //         };
-    //         let mut value = value.borrow_mut();
-    //         let value = value.downcast_mut::<T>()?;
-    //         Some(f(value))
-    //     })
-    //     .ok()
-    //     .flatten()
-    // }
 
     /// Disposes of the stored value
     pub fn dispose(self) {
@@ -337,7 +305,6 @@ impl<
     }
 
     /// Cast a [`StoredValue<T>`] to a [`StoredValue<U>`] if the inner value is of type `U`.
-    #[cfg(feature = "nightly")]
     pub fn downcast<U>(self) -> Option<StoredValue<U>> {
         // SAFETY:
         // The cast don't require an unsafe bloc, but it is still completly unsafe to cast to any type
@@ -353,7 +320,6 @@ impl<
         }
     }
 
-    #[cfg(feature = "nightly")]
     fn get_inner(&self) -> Option<&RefCell<T>> {
         with_runtime(|runtime| {
             let value = {
@@ -381,16 +347,6 @@ impl<
             } else {
                 None
             }
-        })
-        .ok()
-        .flatten()
-    }
-
-    #[cfg(not(feature = "nightly"))]
-    fn get_inner(&self) -> Option<Rc<RefCell<dyn std::any::Any>>> {
-        with_runtime(|runtime| {
-            let values = runtime.stored_values.borrow();
-            values.get(self.id).cloned()
         })
         .ok()
         .flatten()
@@ -440,7 +396,6 @@ pub fn store_value<T>(value: T) -> StoredValue<T>
 where
     T: 'static,
 {
-    #[cfg(feature = "nightly")]
     let (id, inner) = with_runtime(|runtime| {
         let wrapped_value = Rc::new(RefCell::new(value));
         let inner = NonNull::from(&*wrapped_value);
@@ -450,26 +405,9 @@ where
     })
     .expect("store_value failed to find the current runtime");
 
-    #[cfg(not(feature = "nightly"))]
-    let id = with_runtime(|runtime| {
-        let wrapped_value = Rc::new(RefCell::new(value));
-        let id = runtime.stored_values.borrow_mut().insert(wrapped_value);
-        runtime.push_scope_property(ScopeProperty::StoredValue(id));
-        id
-    })
-    .expect("store_value failed to find the current runtime");
-
-    #[cfg(feature = "nightly")]
     let ty = TypeId::of::<T>();
-    #[cfg(not(feature = "nightly"))]
-    let ty = PhantomData;
 
-    StoredValue {
-        id,
-        ty,
-        #[cfg(feature = "nightly")]
-        inner,
-    }
+    StoredValue { id, ty, inner }
 }
 
 impl<T> StoredValue<T> {
