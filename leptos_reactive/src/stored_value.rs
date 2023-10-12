@@ -188,8 +188,7 @@ impl<T: ?Sized> StoredValue<T> {
     pub fn try_with_value<O>(&self, f: impl FnOnce(&T) -> O) -> Option<O> {
         let value_ref = self.get_inner()?;
         let value = value_ref.borrow();
-        let r = &*value;
-        Some(f(r))
+        Some(f(&value))
     }
 
     /// Updates the stored value.
@@ -241,8 +240,7 @@ impl<T: ?Sized> StoredValue<T> {
     pub fn try_update_value<O>(self, f: impl FnOnce(&mut T) -> O) -> Option<O> {
         let value_ref = self.get_inner()?;
         let mut value = value_ref.borrow_mut();
-        let mut_ref = &mut *value;
-        Some(f(mut_ref))
+        Some(f(&mut value))
     }
 
     /// Disposes of the stored value
