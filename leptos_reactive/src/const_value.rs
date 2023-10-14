@@ -82,7 +82,7 @@ impl<T> ConstValue<T> {
     /// pub struct MyUncloneableData {
     ///     pub value: String,
     /// }
-    /// let data = store_const_value(MyCloneableData { value: "a".into() });
+    /// let data = store_const_value(MyUncloneableData { value: "a".into() });
     ///
     /// // calling .get_value() returns a Rc containing the value
     /// assert_eq!(data.get_value().value, "a");
