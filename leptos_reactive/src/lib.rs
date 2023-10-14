@@ -89,6 +89,7 @@ mod hydration;
 // contains "private" implementation details right now.
 // could make this unhidden in the future if needed.
 // macro_export makes it public from the crate root anyways
+mod const_value;
 #[doc(hidden)]
 pub mod macros;
 mod memo;
@@ -111,6 +112,7 @@ mod trigger;
 mod watch;
 
 pub use callback::*;
+pub use const_value::*;
 pub use context::*;
 pub use diagnostics::SpecialNonReactiveZone;
 pub use effect::*;

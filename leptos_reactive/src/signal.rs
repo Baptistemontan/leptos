@@ -16,11 +16,11 @@ use std::{
 use thiserror::Error;
 
 macro_rules! impl_get_fn_traits {
-    ($($ty:ident $(($method_name:ident))?),*) => {
+    ($($ty:ident $(($method_name:ident))? $(@ $output:ty)?),*) => {
         $(
             #[cfg(feature = "nightly")]
             impl<T: Clone> FnOnce<()> for $ty<T> {
-                type Output = T;
+                type Output = impl_get_fn_traits!(@output $($output)?);
 
                 #[inline(always)]
                 extern "rust-call" fn call_once(self, _args: ()) -> Self::Output {
@@ -50,6 +50,12 @@ macro_rules! impl_get_fn_traits {
     };
     (@method_name $self:ident $ident:ident) => {
         $self.$ident()
+    };
+    (@output $out:ty) => {
+        $out
+    };
+    (@output) => {
+        T
     };
 }
 

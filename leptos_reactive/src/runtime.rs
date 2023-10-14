@@ -1,13 +1,14 @@
 #[cfg(debug_assertions)]
 use crate::SpecialNonReactiveZone;
 use crate::{
+    const_value::ConstValueId,
     hydration::SharedContext,
     node::{
         Disposer, NodeId, ReactiveNode, ReactiveNodeState, ReactiveNodeType,
     },
     AnyComputation, AnyResource, EffectState, Memo, MemoState, ReadSignal,
-    ResourceId, ResourceState, RwSignal, SerializableResource, StoredValueId,
-    Trigger, UnserializableResource, WriteSignal,
+    ResourceId, ResourceState, RwSignal, SerializableResource, Trigger,
+    UnserializableResource, WriteSignal,
 };
 use cfg_if::cfg_if;
 use core::hash::BuildHasherDefault;
@@ -62,7 +63,7 @@ pub(crate) struct Runtime {
     #[allow(clippy::type_complexity)]
     pub on_cleanups:
         RefCell<SparseSecondaryMap<NodeId, Vec<Box<dyn FnOnce()>>>>,
-    pub stored_values: RefCell<SlotMap<StoredValueId, Rc<RefCell<dyn Any>>>>,
+    pub const_values: RefCell<SlotMap<ConstValueId, Rc<dyn Any>>>,
     pub nodes: RefCell<SlotMap<NodeId, ReactiveNode>>,
     pub node_subscribers:
         RefCell<SecondaryMap<NodeId, RefCell<FxIndexSet<NodeId>>>>,
@@ -296,8 +297,8 @@ impl Runtime {
             ScopeProperty::Resource(id) => {
                 self.resources.borrow_mut().remove(id);
             }
-            ScopeProperty::StoredValue(id) => {
-                self.stored_values.borrow_mut().remove(id);
+            ScopeProperty::ConstValue(id) => {
+                self.const_values.borrow_mut().remove(id);
             }
         }
     }
@@ -1443,7 +1444,7 @@ pub(crate) enum ScopeProperty {
     Signal(NodeId),
     Effect(NodeId),
     Resource(ResourceId),
-    StoredValue(StoredValueId),
+    ConstValue(ConstValueId),
 }
 
 impl ScopeProperty {
