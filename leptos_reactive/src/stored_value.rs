@@ -1,9 +1,10 @@
 use crate::{with_runtime, Runtime, ScopeProperty};
 use std::{
-    any::TypeId,
+    any::{Any, TypeId},
     cell::RefCell,
     fmt,
     hash::{Hash, Hasher},
+    ops::Deref,
     ptr::NonNull,
     rc::Rc,
 };
@@ -319,17 +320,24 @@ impl<T: ?Sized> StoredValue<T> {
     }
 
     fn get_inner(&self) -> Option<&RefCell<T>> {
+        fn get_runtime_ptr(
+            runtime: &Runtime,
+            id: StoredValueId,
+        ) -> Option<NonNull<RefCell<dyn Any>>> {
+            let values = runtime.stored_values.borrow();
+            values.get(id).map(Deref::deref).map(NonNull::from)
+        }
         with_runtime(|runtime| {
-            let value = {
-                let values = runtime.stored_values.borrow();
-                values.get(self.id)?.clone()
+            let in_runtime_ptr = get_runtime_ptr(runtime, self.id)?;
+            // SAFETY:
+            // The ptr we received back comes from inside the stored_values map, it is therefore valid.
+            let is_same_ty = unsafe {
+                in_runtime_ptr.as_ref().borrow().type_id() == self.ty
             };
-
-            let is_same_ty = value.borrow().type_id() == self.ty;
 
             // Those cast may seams weird, but ptr comparaison also compare Metadata,
             // so if we just want to compare ptr adress this strip the metadata part for unsized T
-            let value_ptr = value.as_ptr() as *const ();
+            let value_ptr = in_runtime_ptr.as_ptr() as *const ();
             let inner_ptr = self.inner.as_ptr() as *const ();
 
             let is_same_ptr = std::ptr::eq(value_ptr, inner_ptr);
